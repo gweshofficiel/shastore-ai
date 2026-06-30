@@ -114,6 +114,14 @@ import {
   type SupportRuntimeCertificationStatus
 } from "@/src/lib/support/support-runtime-certification-runtime";
 import {
+  supportProductionCertificationRuntimeStatusBadgeTone,
+  supportProductionCertificationStatusLabel,
+  supportProductionCertificationStatusTone,
+  supportProductionReadinessLabel,
+  type SupportProductionCertificationStatus,
+  type SupportProductionReadinessStatus
+} from "@/src/lib/support/support-production-certification-runtime";
+import {
   supportTicketAssignmentResultMessage,
   type SupportTicketAssignmentResultCode
 } from "@/src/lib/support/support-ticket-assignment-runtime";
@@ -3288,6 +3296,142 @@ export default async function AdminSupportPage({
         headers={["Control", "Status", "Note"]}
       >
         {control.supportRuntimeCertificationSafeControls.map((controlItem) => (
+          <tr key={controlItem.key}>
+            <td className="px-5 py-4 font-semibold text-slate-950">{controlItem.label}</td>
+            <td className="px-5 py-4">
+              <AdminBadge tone="slate">disabled</AdminBadge>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{controlItem.note}</td>
+          </tr>
+        ))}
+      </AdminTable>
+
+      <div className="flex flex-wrap items-center gap-3 rounded-3xl border border-slate-200 bg-white px-5 py-4">
+        <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">SP-25 Support Production Certification</span>
+        <AdminBadge tone={supportProductionCertificationRuntimeStatusBadgeTone(control.visibleSupportProductionCertification.overallStatus)}>
+          {control.visibleSupportProductionCertification.overallStatus}
+        </AdminBadge>
+        <span className="text-sm text-slate-600">{control.visibleSupportProductionCertification.summary}</span>
+      </div>
+
+      {control.visibleSupportProductionCertification.unauthorizedMessage ? (
+        <Card className="border-red-200 bg-red-50 p-5">
+          <p className="text-sm font-black text-red-800">{control.visibleSupportProductionCertification.unauthorizedMessage}</p>
+        </Card>
+      ) : null}
+
+      {control.visibleSupportProductionCertification.restrictedMessage ? (
+        <Card className="border-amber-200 bg-amber-50 p-5">
+          <p className="text-sm font-black text-amber-800">{control.visibleSupportProductionCertification.restrictedMessage}</p>
+        </Card>
+      ) : null}
+
+      {control.visibleSupportProductionCertification.loadError ? (
+        <Card className="border-amber-200 bg-amber-50 p-5">
+          <p className="text-sm font-black text-amber-800">{control.visibleSupportProductionCertification.loadError}</p>
+        </Card>
+      ) : null}
+
+      {control.visibleSupportProductionCertification.emptyMessage ? (
+        <Card className="border-slate-200 bg-slate-50 p-5">
+          <p className="text-sm font-semibold text-slate-600">{control.visibleSupportProductionCertification.emptyMessage}</p>
+        </Card>
+      ) : null}
+
+      <AdminStatGrid
+        stats={[
+          { label: "Production scopes", value: String(control.visibleSupportProductionCertification.totalCertifications) },
+          { label: "Production ready", value: String(control.visibleSupportProductionCertification.productionReadyScopes) },
+          { label: "Review required", value: String(control.visibleSupportProductionCertification.reviewRequiredScopes) },
+          { label: "Blocked", value: String(control.visibleSupportProductionCertification.blockedScopes) },
+          { label: "Warnings", value: String(control.visibleSupportProductionCertification.warningScopes) },
+          { label: "Loading state", value: control.visibleSupportProductionCertification.loadingState }
+        ]}
+      />
+
+      {control.supportProductionCertificationGroups.map((group) => (
+        <div key={group.groupKey} className="grid gap-3">
+          <div className="flex flex-wrap items-center gap-3 px-1">
+            <span className="text-sm font-black uppercase tracking-[0.14em] text-slate-700">{group.title}</span>
+            <span className="text-xs text-slate-500">
+              {group.itemCount} scope{group.itemCount === 1 ? "" : "s"}
+            </span>
+          </div>
+        </div>
+      ))}
+
+      <AdminTable
+        empty="No Support production certification scopes registered."
+        headers={[
+          "Certification",
+          "Scope",
+          "Production",
+          "Integrity",
+          "Read only",
+          "Mutation",
+          "Execution",
+          "Data",
+          "Security",
+          "Summary"
+        ]}
+      >
+        {control.supportProductionCertificationItems.map((productionItem) => (
+          <tr key={productionItem.productionCertificationKey}>
+            <td className="px-5 py-4">
+              <div className="grid gap-1">
+                <span className="font-semibold text-slate-950">{productionItem.certificationName}</span>
+                <span className="text-xs text-slate-500">
+                  Certified modules: {productionItem.certifiedModules} · Blocked: {productionItem.blockedModules} · Warnings:{" "}
+                  {productionItem.warningModules}
+                </span>
+              </div>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{productionItem.certificationScope}</td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={supportProductionCertificationStatusTone(productionItem.productionReadinessStatus as SupportProductionReadinessStatus)}>
+                {supportProductionReadinessLabel(productionItem.productionReadinessStatus as SupportProductionReadinessStatus)}
+              </AdminBadge>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={supportProductionCertificationStatusTone(productionItem.runtimeIntegrityStatus as SupportProductionCertificationStatus)}>
+                {supportProductionCertificationStatusLabel(productionItem.runtimeIntegrityStatus as SupportProductionCertificationStatus)}
+              </AdminBadge>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={supportProductionCertificationStatusTone(productionItem.readOnlyStatus as SupportProductionCertificationStatus)}>
+                {supportProductionCertificationStatusLabel(productionItem.readOnlyStatus as SupportProductionCertificationStatus)}
+              </AdminBadge>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={supportProductionCertificationStatusTone(productionItem.mutationSafetyStatus as SupportProductionCertificationStatus)}>
+                {supportProductionCertificationStatusLabel(productionItem.mutationSafetyStatus as SupportProductionCertificationStatus)}
+              </AdminBadge>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={supportProductionCertificationStatusTone(productionItem.executionSafetyStatus as SupportProductionCertificationStatus)}>
+                {supportProductionCertificationStatusLabel(productionItem.executionSafetyStatus as SupportProductionCertificationStatus)}
+              </AdminBadge>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={supportProductionCertificationStatusTone(productionItem.dataSafetyStatus as SupportProductionCertificationStatus)}>
+                {supportProductionCertificationStatusLabel(productionItem.dataSafetyStatus as SupportProductionCertificationStatus)}
+              </AdminBadge>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={supportProductionCertificationStatusTone(productionItem.securitySafetyStatus as SupportProductionCertificationStatus)}>
+                {supportProductionCertificationStatusLabel(productionItem.securitySafetyStatus as SupportProductionCertificationStatus)}
+              </AdminBadge>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{productionItem.safeSummary}</td>
+          </tr>
+        ))}
+      </AdminTable>
+
+      <AdminTable
+        empty="No disabled production certification controls registered."
+        headers={["Control", "Status", "Note"]}
+      >
+        {control.supportProductionCertificationSafeControls.map((controlItem) => (
           <tr key={controlItem.key}>
             <td className="px-5 py-4 font-semibold text-slate-950">{controlItem.label}</td>
             <td className="px-5 py-4">
