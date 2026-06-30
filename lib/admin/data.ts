@@ -504,6 +504,12 @@ import {
   toSupportProductionHardeningSnapshot
 } from "@/src/lib/support/support-production-hardening-runtime";
 import {
+  buildSupportFinalValidationReadOnlySafe,
+  mapSupportFinalValidationToAdminFields,
+  resolveSupportFinalValidationAuthorization,
+  toSupportFinalValidationSnapshot
+} from "@/src/lib/support/support-final-validation-runtime";
+import {
   loadSupportTicketConversationRuntimeReadOnlySafe,
   mapSupportTicketConversationRuntimeToAdminFields,
   resolveSupportTicketConversationAuthorization
@@ -8721,6 +8727,54 @@ export type AdminSupportControl = {
     note: string;
   }>;
   visibleSupportProductionHardening: AdminSupportControl["supportProductionHardening"];
+  supportFinalValidation: {
+    blockedScopes: number;
+    emptyMessage: string | null;
+    groupCount: number;
+    loadError: string | null;
+    loadingState: "empty" | "error" | "restricted" | "unauthorized" | "validated";
+    overallStatus: "needs_attention" | "support_final_validation_ready";
+    readOnly: true;
+    registrySource: "support_registry_runtime";
+    restrictedMessage: string | null;
+    reviewRequiredScopes: number;
+    source: "support_final_validation_runtime";
+    summary: string;
+    totalValidations: number;
+    unauthorizedMessage: string | null;
+    validatedScopes: number;
+    warningScopes: number;
+  };
+  supportFinalValidationGroups: Array<{
+    groupKey: string;
+    itemCount: number;
+    items: Array<{
+      authorizationStatus: "blocked" | "review_required" | "validated" | "warning";
+      blockedModules: number;
+      certifiedSystemIsolationStatus: "blocked" | "review_required" | "validated" | "warning";
+      endToEndIntegrationStatus: "blocked" | "review_required" | "validated" | "warning";
+      executionSafetyStatus: "blocked" | "review_required" | "validated" | "warning";
+      finalValidationKey: string;
+      groupKey: string;
+      mutationSafetyStatus: "blocked" | "review_required" | "validated" | "warning";
+      readOnlyValidationStatus: "blocked" | "review_required" | "validated" | "warning";
+      safeSummary: string;
+      secretSanitizationStatus: "blocked" | "review_required" | "validated" | "warning";
+      stateCoverageStatus: "blocked" | "review_required" | "validated" | "warning";
+      validationName: string;
+      validationScope: string;
+      warningModules: number;
+    }>;
+    title: string;
+  }>;
+  supportFinalValidationItems: AdminSupportControl["supportFinalValidationGroups"][number]["items"];
+  supportFinalValidationSafeControls: Array<{
+    enabled: false;
+    key: string;
+    label: string;
+    note: string;
+  }>;
+  visibleSupportFinalValidation: AdminSupportControl["supportFinalValidation"];
 };
 
 export type AdminInternalTeamControl = {
@@ -17856,6 +17910,9 @@ export async function getAdminSupportControl(options?: {
   const productionHardeningAuthorization = resolveSupportProductionHardeningAuthorization({
     role: access.role
   });
+  const finalValidationAuthorization = resolveSupportFinalValidationAuthorization({
+    role: access.role
+  });
   const supportRegistry = mapSupportRegistryRuntimeToAdminFields();
   const { supabase } = await getAdminClient();
   const selectedTicketId = options?.ticketId?.trim() || null;
@@ -19054,6 +19111,146 @@ export async function getAdminSupportControl(options?: {
       stressValidationSafeControls: supportStressValidationLoad.stressValidationSafeControls
     })
   );
+  const supportFinalValidationLoad = mapSupportFinalValidationToAdminFields(
+    buildSupportFinalValidationReadOnlySafe({
+      analyticsRuntime: toSupportFinalValidationSnapshot({
+        readOnly: supportAnalyticsLoad.supportAnalyticsRuntime.readOnly,
+        source: supportAnalyticsLoad.supportAnalyticsRuntime.source,
+        summary: supportAnalyticsLoad.supportAnalyticsRuntime.summary
+      }),
+      analyticsSafeControls: supportAnalyticsLoad.supportAnalyticsSafeControls,
+      auditRuntime: toSupportFinalValidationSnapshot({
+        readOnly: supportAuditLoad.supportAuditRuntime.readOnly,
+        source: supportAuditLoad.supportAuditRuntime.source,
+        summary: supportAuditLoad.supportAuditRuntime.summary
+      }),
+      auditSafeControls: supportAuditLoad.supportAuditSafeControls,
+      authorization: finalValidationAuthorization,
+      dashboardRuntime: toSupportFinalValidationSnapshot({
+        readOnly: certificationDashboardLoad.dashboard.readOnly,
+        source: certificationDashboardLoad.dashboard.source,
+        summary: certificationDashboardLoad.dashboard.summary
+      }),
+      dataCertification: supportDataCertificationLoad.dataCertification,
+      dataCertificationSafeControls: supportDataCertificationLoad.dataCertificationSafeControls,
+      errorEventsRuntime: toSupportFinalValidationSnapshot({
+        readOnly: errorEventsLoad.errorEventsRuntime.readOnly,
+        source: errorEventsLoad.errorEventsRuntime.source,
+        summary: errorEventsLoad.errorEventsRuntime.summary
+      }),
+      errorEventsSafeControls: errorEventsLoad.errorEventsSafeControls,
+      eventTimelineRuntime: toSupportFinalValidationSnapshot({
+        readOnly: eventTimelineLoad.eventTimelineRuntime.readOnly,
+        source: eventTimelineLoad.eventTimelineRuntime.source,
+        summary: eventTimelineLoad.eventTimelineRuntime.summary
+      }),
+      eventTimelineSafeControls: eventTimelineLoad.eventTimelineSafeControls,
+      exportRuntime: toSupportFinalValidationSnapshot({
+        readOnly: supportExportLoad.supportExportRuntime.readOnly,
+        source: supportExportLoad.supportExportRuntime.source,
+        summary: supportExportLoad.supportExportRuntime.summary
+      }),
+      filtersRuntime: toSupportFinalValidationSnapshot({
+        readOnly: supportFiltersLoad.supportFiltersRuntime.readOnly,
+        source: supportFiltersLoad.supportFiltersRuntime.source,
+        summary: supportFiltersLoad.supportFiltersRuntime.summary
+      }),
+      hiddenRecordCount: supportVisibilityLoad.supportVisibilityRuntime.hiddenRecordCount,
+      loadError: ticketsRuntimeLoad.ticketsRuntime.loadError ?? (supabase ? null : "Admin client unavailable"),
+      metricsRuntime: toSupportFinalValidationSnapshot({
+        readOnly: supportVisibilityLoad.visibleSupportMetricsRuntime.readOnly,
+        source: supportVisibilityLoad.visibleSupportMetricsRuntime.source,
+        summary: supportVisibilityLoad.visibleSupportMetricsRuntime.summary
+      }),
+      monitoringEventsRuntime: toSupportFinalValidationSnapshot({
+        readOnly: monitoringEventsLoad.monitoringEventsRuntime.readOnly,
+        source: monitoringEventsLoad.monitoringEventsRuntime.source,
+        summary: monitoringEventsLoad.monitoringEventsRuntime.summary
+      }),
+      monitoringEventsSafeControls: monitoringEventsLoad.monitoringEventsSafeControls,
+      notificationsRuntime: toSupportFinalValidationSnapshot({
+        readOnly: supportNotificationsLoad.supportNotificationsRuntime.readOnly,
+        source: supportNotificationsLoad.supportNotificationsRuntime.source,
+        summary: supportNotificationsLoad.supportNotificationsRuntime.summary
+      }),
+      notificationsSafeControls: supportNotificationsLoad.supportNotificationsSafeControls,
+      productionCertification: supportProductionCertificationLoad.productionCertification,
+      productionCertificationItems: supportProductionCertificationLoad.productionCertificationItems,
+      productionCertificationSafeControls: supportProductionCertificationLoad.productionCertificationSafeControls,
+      productionHardening: supportProductionHardeningLoad.productionHardening,
+      productionHardeningItems: supportProductionHardeningLoad.productionHardeningItems,
+      productionHardeningSafeControls: supportProductionHardeningLoad.productionHardeningSafeControls,
+      registryRuntime: toSupportFinalValidationSnapshot({
+        readOnly: supportRegistry.registry.readOnly,
+        source: supportRegistry.registry.source,
+        summary: supportRegistry.registry.summary
+      }),
+      restrictedRecordCount: supportVisibilityLoad.supportVisibilityRuntime.restrictedRecordCount,
+      reviewItems: supportReviewLoad.supportReviewRuntimeItems,
+      reviewRuntime: toSupportFinalValidationSnapshot({
+        readOnly: supportReviewLoad.supportReviewRuntime.readOnly,
+        source: supportReviewLoad.supportReviewRuntime.source,
+        summary: supportReviewLoad.supportReviewRuntime.summary
+      }),
+      reviewSafeControls: supportReviewLoad.supportReviewSafeControls,
+      role: access.role,
+      runtimeCertification: supportRuntimeCertificationLoad.runtimeCertification,
+      runtimeCertificationSafeControls: supportRuntimeCertificationLoad.runtimeCertificationSafeControls,
+      safeActionsRuntime: toSupportFinalValidationSnapshot({
+        readOnly: supportSafeActionsLoad.supportSafeActionsRuntime.readOnly,
+        source: supportSafeActionsLoad.supportSafeActionsRuntime.source,
+        summary: supportSafeActionsLoad.supportSafeActionsRuntime.summary
+      }),
+      searchRuntime: toSupportFinalValidationSnapshot({
+        readOnly: supportSearchLoad.supportSearchRuntime.readOnly,
+        source: supportSearchLoad.supportSearchRuntime.source,
+        summary: supportSearchLoad.supportSearchRuntime.summary
+      }),
+      securityCertification: supportSecurityCertificationLoad.securityCertification,
+      securityCertificationItems: supportSecurityCertificationLoad.securityCertificationItems,
+      securityCertificationSafeControls: supportSecurityCertificationLoad.securityCertificationSafeControls,
+      statusRuntime: toSupportFinalValidationSnapshot({
+        readOnly: supportStatusLoad.supportStatusRuntime.readOnly,
+        source: supportStatusLoad.supportStatusRuntime.source,
+        summary: supportStatusLoad.supportStatusRuntime.summary
+      }),
+      stressValidation: supportStressValidationLoad.stressValidation,
+      stressValidationItems: supportStressValidationLoad.stressValidationItems,
+      stressValidationSafeControls: supportStressValidationLoad.stressValidationSafeControls,
+      ticketAssignmentRuntime: toSupportFinalValidationSnapshot({
+        readOnly: assignmentLoad.ticketAssignmentRuntime.readOnly,
+        source: assignmentLoad.ticketAssignmentRuntime.source,
+        summary: assignmentLoad.ticketAssignmentRuntime.summary
+      }),
+      ticketConversationRuntime: toSupportFinalValidationSnapshot({
+        readOnly: ticketConversationLoad.ticketConversationRuntime.readOnly,
+        source: ticketConversationLoad.ticketConversationRuntime.source,
+        summary: ticketConversationLoad.ticketConversationRuntime.summary
+      }),
+      ticketDetailsRuntime: toSupportFinalValidationSnapshot({
+        readOnly: ticketDetailsLoad.ticketDetailsRuntime.readOnly,
+        source: ticketDetailsLoad.ticketDetailsRuntime.source,
+        summary: ticketDetailsLoad.ticketDetailsRuntime.summary
+      }),
+      ticketStatusRuntime: toSupportFinalValidationSnapshot({
+        readOnly: ticketStatusLoad.ticketStatusRuntime.readOnly,
+        source: ticketStatusLoad.ticketStatusRuntime.source,
+        summary: ticketStatusLoad.ticketStatusRuntime.summary
+      }),
+      ticketsRuntime: toSupportFinalValidationSnapshot({
+        readOnly: ticketsRuntimeLoad.ticketsRuntime.readOnly,
+        source: ticketsRuntimeLoad.ticketsRuntime.source,
+        summary: ticketsRuntimeLoad.ticketsRuntime.summary
+      }),
+      ticketsSafeControls: ticketsRuntimeLoad.safeControls,
+      visibilityAuthorization,
+      visibilityRuntime: toSupportFinalValidationSnapshot({
+        readOnly: supportVisibilityLoad.supportVisibilityRuntime.readOnly,
+        source: supportVisibilityLoad.supportVisibilityRuntime.source,
+        summary: supportVisibilityLoad.supportVisibilityRuntime.summary
+      })
+    })
+  );
   const monitoringEvents = mapSupportMonitoringRuntimeItemsToLegacyMonitoringEvents(
     monitoringEventsLoad.monitoringEvents
   );
@@ -19168,6 +19365,11 @@ export async function getAdminSupportControl(options?: {
       supportProductionHardeningItems: supportProductionHardeningLoad.productionHardeningItems,
       supportProductionHardeningSafeControls: supportProductionHardeningLoad.productionHardeningSafeControls,
       visibleSupportProductionHardening: supportProductionHardeningLoad.productionHardening,
+      supportFinalValidation: supportFinalValidationLoad.finalValidation,
+      supportFinalValidationGroups: supportFinalValidationLoad.finalValidationGroups,
+      supportFinalValidationItems: supportFinalValidationLoad.finalValidationItems,
+      supportFinalValidationSafeControls: supportFinalValidationLoad.finalValidationSafeControls,
+      visibleSupportFinalValidation: supportFinalValidationLoad.finalValidation,
       recentActivity: dashboardLoad.recentActivity,
       registry: supportRegistry.registry,
       stats: {
@@ -19301,6 +19503,11 @@ export async function getAdminSupportControl(options?: {
     supportProductionHardeningItems: supportProductionHardeningLoad.productionHardeningItems,
     supportProductionHardeningSafeControls: supportProductionHardeningLoad.productionHardeningSafeControls,
     visibleSupportProductionHardening: supportProductionHardeningLoad.productionHardening,
+    supportFinalValidation: supportFinalValidationLoad.finalValidation,
+    supportFinalValidationGroups: supportFinalValidationLoad.finalValidationGroups,
+    supportFinalValidationItems: supportFinalValidationLoad.finalValidationItems,
+    supportFinalValidationSafeControls: supportFinalValidationLoad.finalValidationSafeControls,
+    visibleSupportFinalValidation: supportFinalValidationLoad.finalValidation,
     recentActivity: dashboardLoad.recentActivity,
     registry: supportRegistry.registry,
     stats: {

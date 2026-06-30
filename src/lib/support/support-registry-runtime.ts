@@ -25,6 +25,7 @@ export type SupportRuntimeType =
   | "notification_runtime"
   | "production_certification_runtime"
   | "production_hardening_runtime"
+  | "final_validation_runtime"
   | "review_runtime"
   | "runtime_certification_runtime"
   | "safe_actions"
@@ -80,6 +81,7 @@ export type SupportRegistryEntryDefinition = {
     | "SP-25"
     | "SP-26"
     | "SP-27"
+    | "SP-28"
     | "SP-3"
     | "SP-4"
     | "SP-5"
@@ -597,7 +599,7 @@ const SUPPORT_REGISTRY_DEFINITIONS: readonly SupportRegistryEntryDefinition[] = 
     createdFromArchitecture: true,
     description:
       "Support production hardening runtime validating production-safe read-only Support stability metadata across SP-1 through SP-26. Derived hardening only; no hardening apply or mutation on page load.",
-    futureHooks: ["Final certification"],
+    futureHooks: ["Final production certification"],
     healthSupport: true,
     id: "support:production-hardening",
     implementationStatus: "production_ready",
@@ -608,6 +610,25 @@ const SUPPORT_REGISTRY_DEFINITIONS: readonly SupportRegistryEntryDefinition[] = 
     roadmapPhase: "SP-27",
     runtimeType: "production_hardening_runtime",
     title: "Production Hardening",
+    visibility: "super_admin"
+  },
+  {
+    auditSupport: true,
+    category: "Support Platform",
+    createdFromArchitecture: true,
+    description:
+      "Support final validation runtime performing end-to-end read-only validation metadata across SP-1 through SP-27. Derived validation only; no execution, mutation, or certified system regression on page load.",
+    futureHooks: ["Final production certification"],
+    healthSupport: true,
+    id: "support:final-validation",
+    implementationStatus: "production_ready",
+    key: "sp-final-validation",
+    monitoringSupport: true,
+    permissions: ["super_admin:read"],
+    productionReady: true,
+    roadmapPhase: "SP-28",
+    runtimeType: "final_validation_runtime",
+    title: "Final Validation",
     visibility: "super_admin"
   }
 ] as const;

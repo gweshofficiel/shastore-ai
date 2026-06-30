@@ -134,6 +134,12 @@ import {
   type SupportProductionHardeningStatus
 } from "@/src/lib/support/support-production-hardening-runtime";
 import {
+  supportFinalValidationRuntimeStatusBadgeTone,
+  supportFinalValidationStatusLabel,
+  supportFinalValidationStatusTone,
+  type SupportFinalValidationStatus
+} from "@/src/lib/support/support-final-validation-runtime";
+import {
   supportTicketAssignmentResultMessage,
   type SupportTicketAssignmentResultCode
 } from "@/src/lib/support/support-ticket-assignment-runtime";
@@ -3720,6 +3726,147 @@ export default async function AdminSupportPage({
         headers={["Control", "Status", "Note"]}
       >
         {control.supportProductionHardeningSafeControls.map((controlItem) => (
+          <tr key={controlItem.key}>
+            <td className="px-5 py-4 font-semibold text-slate-950">{controlItem.label}</td>
+            <td className="px-5 py-4">
+              <AdminBadge tone="slate">disabled</AdminBadge>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{controlItem.note}</td>
+          </tr>
+        ))}
+      </AdminTable>
+
+      <div className="flex flex-wrap items-center gap-3 rounded-3xl border border-slate-200 bg-white px-5 py-4">
+        <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">SP-28 Support Final Validation</span>
+        <AdminBadge tone={supportFinalValidationRuntimeStatusBadgeTone(control.visibleSupportFinalValidation.overallStatus)}>
+          {control.visibleSupportFinalValidation.overallStatus}
+        </AdminBadge>
+        <span className="text-sm text-slate-600">{control.visibleSupportFinalValidation.summary}</span>
+      </div>
+
+      {control.visibleSupportFinalValidation.unauthorizedMessage ? (
+        <Card className="border-red-200 bg-red-50 p-5">
+          <p className="text-sm font-black text-red-800">{control.visibleSupportFinalValidation.unauthorizedMessage}</p>
+        </Card>
+      ) : null}
+
+      {control.visibleSupportFinalValidation.restrictedMessage ? (
+        <Card className="border-amber-200 bg-amber-50 p-5">
+          <p className="text-sm font-black text-amber-800">{control.visibleSupportFinalValidation.restrictedMessage}</p>
+        </Card>
+      ) : null}
+
+      {control.visibleSupportFinalValidation.loadError ? (
+        <Card className="border-amber-200 bg-amber-50 p-5">
+          <p className="text-sm font-black text-amber-800">{control.visibleSupportFinalValidation.loadError}</p>
+        </Card>
+      ) : null}
+
+      {control.visibleSupportFinalValidation.emptyMessage ? (
+        <Card className="border-slate-200 bg-slate-50 p-5">
+          <p className="text-sm font-semibold text-slate-600">{control.visibleSupportFinalValidation.emptyMessage}</p>
+        </Card>
+      ) : null}
+
+      <AdminStatGrid
+        stats={[
+          { label: "Final validations", value: String(control.visibleSupportFinalValidation.totalValidations) },
+          { label: "Validated", value: String(control.visibleSupportFinalValidation.validatedScopes) },
+          { label: "Review required", value: String(control.visibleSupportFinalValidation.reviewRequiredScopes) },
+          { label: "Blocked", value: String(control.visibleSupportFinalValidation.blockedScopes) },
+          { label: "Warnings", value: String(control.visibleSupportFinalValidation.warningScopes) },
+          { label: "Loading state", value: control.visibleSupportFinalValidation.loadingState }
+        ]}
+      />
+
+      {control.supportFinalValidationGroups.map((group) => (
+        <div key={group.groupKey} className="grid gap-3">
+          <div className="flex flex-wrap items-center gap-3 px-1">
+            <span className="text-sm font-black uppercase tracking-[0.14em] text-slate-700">{group.title}</span>
+            <span className="text-xs text-slate-500">
+              {group.itemCount} validation{group.itemCount === 1 ? "" : "s"}
+            </span>
+          </div>
+        </div>
+      ))}
+
+      <AdminTable
+        empty="No Support final validation scopes registered."
+        headers={[
+          "Validation",
+          "Scope",
+          "Integration",
+          "Read only",
+          "Authorization",
+          "Secrets",
+          "States",
+          "Execution",
+          "Mutation",
+          "Isolation",
+          "Summary"
+        ]}
+      >
+        {control.supportFinalValidationItems.map((validationItem) => (
+          <tr key={validationItem.finalValidationKey}>
+            <td className="px-5 py-4">
+              <div className="grid gap-1">
+                <span className="font-semibold text-slate-950">{validationItem.validationName}</span>
+                <span className="text-xs text-slate-500">
+                  Blocked: {validationItem.blockedModules} · Warnings: {validationItem.warningModules}
+                </span>
+              </div>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{validationItem.validationScope}</td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={supportFinalValidationStatusTone(validationItem.endToEndIntegrationStatus as SupportFinalValidationStatus)}>
+                {supportFinalValidationStatusLabel(validationItem.endToEndIntegrationStatus as SupportFinalValidationStatus)}
+              </AdminBadge>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={supportFinalValidationStatusTone(validationItem.readOnlyValidationStatus as SupportFinalValidationStatus)}>
+                {supportFinalValidationStatusLabel(validationItem.readOnlyValidationStatus as SupportFinalValidationStatus)}
+              </AdminBadge>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={supportFinalValidationStatusTone(validationItem.authorizationStatus as SupportFinalValidationStatus)}>
+                {supportFinalValidationStatusLabel(validationItem.authorizationStatus as SupportFinalValidationStatus)}
+              </AdminBadge>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={supportFinalValidationStatusTone(validationItem.secretSanitizationStatus as SupportFinalValidationStatus)}>
+                {supportFinalValidationStatusLabel(validationItem.secretSanitizationStatus as SupportFinalValidationStatus)}
+              </AdminBadge>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={supportFinalValidationStatusTone(validationItem.stateCoverageStatus as SupportFinalValidationStatus)}>
+                {supportFinalValidationStatusLabel(validationItem.stateCoverageStatus as SupportFinalValidationStatus)}
+              </AdminBadge>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={supportFinalValidationStatusTone(validationItem.executionSafetyStatus as SupportFinalValidationStatus)}>
+                {supportFinalValidationStatusLabel(validationItem.executionSafetyStatus as SupportFinalValidationStatus)}
+              </AdminBadge>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={supportFinalValidationStatusTone(validationItem.mutationSafetyStatus as SupportFinalValidationStatus)}>
+                {supportFinalValidationStatusLabel(validationItem.mutationSafetyStatus as SupportFinalValidationStatus)}
+              </AdminBadge>
+            </td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={supportFinalValidationStatusTone(validationItem.certifiedSystemIsolationStatus as SupportFinalValidationStatus)}>
+                {supportFinalValidationStatusLabel(validationItem.certifiedSystemIsolationStatus as SupportFinalValidationStatus)}
+              </AdminBadge>
+            </td>
+            <td className="px-5 py-4 text-slate-600">{validationItem.safeSummary}</td>
+          </tr>
+        ))}
+      </AdminTable>
+
+      <AdminTable
+        empty="No disabled final validation controls registered."
+        headers={["Control", "Status", "Note"]}
+      >
+        {control.supportFinalValidationSafeControls.map((controlItem) => (
           <tr key={controlItem.key}>
             <td className="px-5 py-4 font-semibold text-slate-950">{controlItem.label}</td>
             <td className="px-5 py-4">
