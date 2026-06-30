@@ -50,6 +50,9 @@ import {
   supportFiltersRuntimeStatusBadgeTone
 } from "@/src/lib/support/support-filters-runtime";
 import {
+  supportMetricsRuntimeStatusBadgeTone
+} from "@/src/lib/support/support-metrics-runtime";
+import {
   supportTicketAssignmentResultMessage,
   type SupportTicketAssignmentResultCode
 } from "@/src/lib/support/support-ticket-assignment-runtime";
@@ -1651,6 +1654,98 @@ export default async function AdminSupportPage({
           ]}
         />
       ) : null}
+
+      <div className="flex flex-wrap items-center gap-3 rounded-3xl border border-slate-200 bg-white px-5 py-4">
+        <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">Support metrics runtime</span>
+        <AdminBadge tone={supportMetricsRuntimeStatusBadgeTone(control.supportMetricsRuntime.status)}>
+          {control.supportMetricsRuntime.status}
+        </AdminBadge>
+        <span className="text-sm text-slate-600">{control.supportMetricsRuntime.summary}</span>
+      </div>
+
+      {control.supportMetricsRuntime.status === "unauthorized" ? (
+        <Card className="border-red-200 bg-red-50 p-5">
+          <p className="text-sm font-black text-red-800">
+            You are not authorized to view Support metrics with the current account.
+          </p>
+        </Card>
+      ) : null}
+
+      {control.supportMetricsRuntime.loadError ? (
+        <Card className="border-amber-200 bg-amber-50 p-5">
+          <p className="text-sm font-black text-amber-800">{control.supportMetricsRuntime.loadError}</p>
+        </Card>
+      ) : null}
+
+      {control.supportMetricsRuntime.emptyMessage ? (
+        <Card className="border-slate-200 bg-slate-50 p-5">
+          <p className="text-sm font-semibold text-slate-600">{control.supportMetricsRuntime.emptyMessage}</p>
+        </Card>
+      ) : null}
+
+      <AdminStatGrid stats={control.supportMetricsRuntime.metricCards} />
+
+      <div className="grid gap-4 xl:grid-cols-2">
+        <AdminTable empty="No ticket priority metrics in the current scope." headers={["Priority", "Tickets"]}>
+          {control.supportMetricsRuntime.ticketsByPriority.map((item) => (
+            <tr key={`priority-${item.key}`}>
+              <td className="px-5 py-4 font-semibold text-slate-950">{item.label}</td>
+              <td className="px-5 py-4 text-slate-600">{item.count}</td>
+            </tr>
+          ))}
+        </AdminTable>
+
+        <AdminTable empty="No ticket category metrics in the current scope." headers={["Category", "Tickets"]}>
+          {control.supportMetricsRuntime.ticketsByCategory.map((item) => (
+            <tr key={`category-${item.key}`}>
+              <td className="px-5 py-4 font-semibold text-slate-950">{item.label}</td>
+              <td className="px-5 py-4 text-slate-600">{item.count}</td>
+            </tr>
+          ))}
+        </AdminTable>
+
+        <AdminTable
+          empty="No monitoring severity metrics in the current scope."
+          headers={["Monitoring severity", "Events"]}
+        >
+          {control.supportMetricsRuntime.monitoringEventsBySeverity.map((item) => (
+            <tr key={`monitoring-severity-${item.key}`}>
+              <td className="px-5 py-4 font-semibold text-slate-950">{item.label}</td>
+              <td className="px-5 py-4 text-slate-600">{item.count}</td>
+            </tr>
+          ))}
+        </AdminTable>
+
+        <AdminTable
+          empty="No monitoring status metrics in the current scope."
+          headers={["Monitoring status", "Events"]}
+        >
+          {control.supportMetricsRuntime.monitoringEventsByStatus.map((item) => (
+            <tr key={`monitoring-status-${item.key}`}>
+              <td className="px-5 py-4 font-semibold text-slate-950">{item.label}</td>
+              <td className="px-5 py-4 text-slate-600">{item.count}</td>
+            </tr>
+          ))}
+        </AdminTable>
+
+        <AdminTable empty="No error severity metrics in the current scope." headers={["Error severity", "Events"]}>
+          {control.supportMetricsRuntime.errorEventsBySeverity.map((item) => (
+            <tr key={`error-severity-${item.key}`}>
+              <td className="px-5 py-4 font-semibold text-slate-950">{item.label}</td>
+              <td className="px-5 py-4 text-slate-600">{item.count}</td>
+            </tr>
+          ))}
+        </AdminTable>
+
+        <AdminTable empty="No error status metrics in the current scope." headers={["Error status", "Events"]}>
+          {control.supportMetricsRuntime.errorEventsByStatus.map((item) => (
+            <tr key={`error-status-${item.key}`}>
+              <td className="px-5 py-4 font-semibold text-slate-950">{item.label}</td>
+              <td className="px-5 py-4 text-slate-600">{item.count}</td>
+            </tr>
+          ))}
+        </AdminTable>
+      </div>
 
       <div className="flex flex-wrap items-center gap-3 rounded-3xl border border-slate-200 bg-white px-5 py-4">
         <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">Support search runtime</span>

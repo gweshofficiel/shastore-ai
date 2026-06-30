@@ -424,6 +424,11 @@ import {
   resolveSupportFiltersAuthorization
 } from "@/src/lib/support/support-filters-runtime";
 import {
+  buildSupportMetricsRuntime,
+  mapSupportMetricsRuntimeToAdminFields,
+  resolveSupportMetricsAuthorization
+} from "@/src/lib/support/support-metrics-runtime";
+import {
   loadSupportTicketConversationRuntimeReadOnlySafe,
   mapSupportTicketConversationRuntimeToAdminFields,
   resolveSupportTicketConversationAuthorization
@@ -7930,6 +7935,36 @@ export type AdminSupportControl = {
   filteredErrorEventsRuntimeItems: AdminSupportControl["errorEventsRuntimeItems"];
   filteredEventTimelineRuntimeItems: AdminSupportControl["eventTimelineRuntimeItems"];
   filteredSearchResults: AdminSupportControl["searchResults"];
+  supportMetricsRuntime: {
+    assignedTickets: number;
+    closedTickets: number;
+    emptyMessage: string | null;
+    errorEventsBySeverity: Array<{ count: number; key: string; label: string }>;
+    errorEventsByStatus: Array<{ count: number; key: string; label: string }>;
+    inProgressTickets: number;
+    loadError: string | null;
+    loadingState: "computed" | "empty" | "error" | "unauthorized";
+    metricCards: Array<{ label: string; value: string }>;
+    monitoringEventsBySeverity: Array<{ count: number; key: string; label: string }>;
+    monitoringEventsByStatus: Array<{ count: number; key: string; label: string }>;
+    openTickets: number;
+    pendingTickets: number;
+    readOnly: true;
+    recentActivityCount: number;
+    registrySource: "support_registry_runtime";
+    resolvedTickets: number;
+    scope: "filtered" | "filtered_and_search" | "unscoped";
+    searchResultCount: number;
+    source: "support_metrics_runtime";
+    status: "load_error" | "metrics_empty" | "metrics_runtime_ready" | "unauthorized";
+    summary: string;
+    ticketsByCategory: Array<{ count: number; key: string; label: string }>;
+    ticketsByPriority: Array<{ count: number; key: string; label: string }>;
+    totalErrorEvents: number;
+    totalMonitoringEvents: number;
+    totalTickets: number;
+    unassignedTickets: number;
+  };
 };
 
 export type AdminInternalTeamControl = {
@@ -17025,6 +17060,10 @@ export async function getAdminSupportControl(options?: {
     internalRole: access.internalRole,
     role: access.role
   });
+  const metricsAuthorization = resolveSupportMetricsAuthorization({
+    internalRole: access.internalRole,
+    role: access.role
+  });
   const supportRegistry = mapSupportRegistryRuntimeToAdminFields();
   const { supabase } = await getAdminClient();
   const selectedTicketId = options?.ticketId?.trim() || null;
@@ -17117,6 +17156,19 @@ export async function getAdminSupportControl(options?: {
       tickets: ticketsRuntimeLoad.tickets
     })
   );
+  const supportMetricsLoad = mapSupportMetricsRuntimeToAdminFields(
+    buildSupportMetricsRuntime({
+      authorization: metricsAuthorization,
+      errorEvents: supportFiltersLoad.filteredErrorEvents,
+      eventTimeline: supportFiltersLoad.filteredEventTimeline,
+      filtersApplied: supportFiltersLoad.supportFiltersRuntime.appliedFilterCount > 0,
+      loadError: ticketsRuntimeLoad.ticketsRuntime.loadError ?? (supabase ? null : "Admin client unavailable"),
+      monitoringEvents: supportFiltersLoad.filteredMonitoringEvents,
+      searchQuery,
+      searchResults: supportFiltersLoad.filteredSearchResults,
+      tickets: supportFiltersLoad.filteredTickets
+    })
+  );
   const monitoringEvents = mapSupportMonitoringRuntimeItemsToLegacyMonitoringEvents(
     monitoringEventsLoad.monitoringEvents
   );
@@ -17164,6 +17216,7 @@ export async function getAdminSupportControl(options?: {
       filteredErrorEventsRuntimeItems: supportFiltersLoad.filteredErrorEvents,
       filteredEventTimelineRuntimeItems: supportFiltersLoad.filteredEventTimeline,
       filteredSearchResults: supportFiltersLoad.filteredSearchResults,
+      supportMetricsRuntime: supportMetricsLoad.supportMetricsRuntime,
       recentActivity: dashboardLoad.recentActivity,
       registry: supportRegistry.registry,
       stats: {
@@ -17230,6 +17283,7 @@ export async function getAdminSupportControl(options?: {
     filteredErrorEventsRuntimeItems: supportFiltersLoad.filteredErrorEvents,
     filteredEventTimelineRuntimeItems: supportFiltersLoad.filteredEventTimeline,
     filteredSearchResults: supportFiltersLoad.filteredSearchResults,
+    supportMetricsRuntime: supportMetricsLoad.supportMetricsRuntime,
     recentActivity: dashboardLoad.recentActivity,
     registry: supportRegistry.registry,
     stats: {
