@@ -457,6 +457,11 @@ import {
   resolveSupportAnalyticsAuthorization
 } from "@/src/lib/support/support-analytics-runtime";
 import {
+  buildSupportExportRuntime,
+  mapSupportExportRuntimeToAdminFields,
+  resolveSupportExportAuthorization
+} from "@/src/lib/support/support-export-runtime";
+import {
   loadSupportTicketConversationRuntimeReadOnlySafe,
   mapSupportTicketConversationRuntimeToAdminFields,
   resolveSupportTicketConversationAuthorization
@@ -8309,6 +8314,37 @@ export type AdminSupportControl = {
     note: string;
   }>;
   visibleSupportAnalyticsRuntime: AdminSupportControl["supportAnalyticsRuntime"];
+  supportExportRuntime: {
+    emptyMessage: string | null;
+    exportCsvHref: string | null;
+    exportHelperText: string;
+    exportJsonHref: string | null;
+    exportSectionCount: number;
+    exportSections: Array<{
+      exportAvailable: boolean;
+      exportCsvHref: string | null;
+      exportJsonHref: string | null;
+      helperText: string;
+      key: string;
+      label: string;
+      readOnly: true;
+      recordCount: number;
+    }>;
+    hiddenRecordCount: number;
+    loadError: string | null;
+    loadingState: "empty" | "error" | "export_ready" | "restricted" | "success" | "unauthorized";
+    readOnly: true;
+    registrySource: "support_registry_runtime";
+    restrictedMessage: string | null;
+    restrictedRecordCount: number;
+    source: "support_export_runtime";
+    status: "export_empty" | "export_runtime_ready" | "load_error" | "needs_attention" | "unauthorized";
+    summary: string;
+    totalExportableRecords: number;
+    unauthorizedMessage: string | null;
+    visibleRecordCount: number;
+  };
+  visibleSupportExportRuntime: AdminSupportControl["supportExportRuntime"];
 };
 
 export type AdminInternalTeamControl = {
@@ -17420,6 +17456,9 @@ export async function getAdminSupportControl(options?: {
   const analyticsAuthorization = resolveSupportAnalyticsAuthorization({
     role: access.role
   });
+  const exportAuthorization = resolveSupportExportAuthorization({
+    role: access.role
+  });
   const supportRegistry = mapSupportRegistryRuntimeToAdminFields();
   const { supabase } = await getAdminClient();
   const selectedTicketId = options?.ticketId?.trim() || null;
@@ -17631,6 +17670,30 @@ export async function getAdminSupportControl(options?: {
       restrictedRecordCount: supportVisibilityLoad.supportVisibilityRuntime.restrictedRecordCount
     })
   );
+  const supportExportLoad = mapSupportExportRuntimeToAdminFields(
+    buildSupportExportRuntime({
+      analyticsRuntime: supportAnalyticsLoad.supportAnalyticsRuntime,
+      authorization: exportAuthorization,
+      filterQuery,
+      filtersApplied: supportFiltersLoad.supportFiltersRuntime.appliedFilterCount > 0,
+      loadError: ticketsRuntimeLoad.ticketsRuntime.loadError ?? (supabase ? null : "Admin client unavailable"),
+      metricsRuntime: supportVisibilityLoad.visibleSupportMetricsRuntime,
+      searchQuery,
+      selectedTicketDetail: supportVisibilityLoad.visibleTicketDetail,
+      selectedTicketId,
+      visibilityAuthorization,
+      visibleAuditItems: supportAuditLoad.visibleSupportAuditRuntimeItems,
+      visibleConversationMessages: supportVisibilityLoad.visibleTicketConversationMessages,
+      visibleErrorEvents: supportVisibilityLoad.visibleErrorEvents,
+      visibleEventTimeline: supportVisibilityLoad.visibleEventTimeline,
+      visibleMonitoringEvents: supportVisibilityLoad.visibleMonitoringEvents,
+      visibleNotificationItems: supportNotificationsLoad.visibleSupportNotificationsRuntimeItems,
+      visibleReviewItems: supportReviewLoad.visibleSupportReviewRuntimeItems,
+      visibleTickets: supportVisibilityLoad.visibleTickets,
+      hiddenRecordCount: supportVisibilityLoad.supportVisibilityRuntime.hiddenRecordCount,
+      restrictedRecordCount: supportVisibilityLoad.supportVisibilityRuntime.restrictedRecordCount
+    })
+  );
   const monitoringEvents = mapSupportMonitoringRuntimeItemsToLegacyMonitoringEvents(
     monitoringEventsLoad.monitoringEvents
   );
@@ -17709,6 +17772,8 @@ export async function getAdminSupportControl(options?: {
       supportAnalyticsRuntime: supportAnalyticsLoad.supportAnalyticsRuntime,
       supportAnalyticsSafeControls: supportAnalyticsLoad.supportAnalyticsSafeControls,
       visibleSupportAnalyticsRuntime: supportAnalyticsLoad.supportAnalyticsRuntime,
+      supportExportRuntime: supportExportLoad.supportExportRuntime,
+      visibleSupportExportRuntime: supportExportLoad.supportExportRuntime,
       recentActivity: dashboardLoad.recentActivity,
       registry: supportRegistry.registry,
       stats: {
@@ -17806,6 +17871,8 @@ export async function getAdminSupportControl(options?: {
     supportAnalyticsRuntime: supportAnalyticsLoad.supportAnalyticsRuntime,
     supportAnalyticsSafeControls: supportAnalyticsLoad.supportAnalyticsSafeControls,
     visibleSupportAnalyticsRuntime: supportAnalyticsLoad.supportAnalyticsRuntime,
+    supportExportRuntime: supportExportLoad.supportExportRuntime,
+    visibleSupportExportRuntime: supportExportLoad.supportExportRuntime,
     recentActivity: dashboardLoad.recentActivity,
     registry: supportRegistry.registry,
     stats: {

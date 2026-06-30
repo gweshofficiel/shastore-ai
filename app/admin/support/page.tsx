@@ -88,6 +88,9 @@ import {
   supportAnalyticsRuntimeStatusBadgeTone
 } from "@/src/lib/support/support-analytics-runtime";
 import {
+  supportExportRuntimeStatusBadgeTone
+} from "@/src/lib/support/support-export-runtime";
+import {
   supportTicketAssignmentResultMessage,
   type SupportTicketAssignmentResultCode
 } from "@/src/lib/support/support-ticket-assignment-runtime";
@@ -413,6 +416,7 @@ export default async function AdminSupportPage({
     eventSource?: string;
     eventStatus?: string;
     eventType?: string;
+    exportResult?: string;
     from?: string;
     priority?: string;
     q?: string;
@@ -434,6 +438,7 @@ export default async function AdminSupportPage({
   const conversationResult = query.conversationResult?.trim() || null;
   const safeActionResult = query.safeActionResult?.trim() || null;
   const safeAction = query.safeAction?.trim() || null;
+  const exportResult = query.exportResult?.trim() || null;
   const control = await getAdminSupportControl({
     filterQuery: query,
     searchQuery: query.q ?? null,
@@ -2374,6 +2379,128 @@ export default async function AdminSupportPage({
               <AdminBadge tone="slate">disabled</AdminBadge>
             </td>
             <td className="px-5 py-4 text-slate-600">{controlItem.note}</td>
+          </tr>
+        ))}
+      </AdminTable>
+
+      <div className="flex flex-wrap items-center gap-3 rounded-3xl border border-slate-200 bg-white px-5 py-4">
+        <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">SP-20 Support Export</span>
+        <AdminBadge tone={supportExportRuntimeStatusBadgeTone(control.visibleSupportExportRuntime.status)}>
+          {control.visibleSupportExportRuntime.status}
+        </AdminBadge>
+        <span className="text-sm text-slate-600">{control.visibleSupportExportRuntime.summary}</span>
+      </div>
+
+      {control.visibleSupportExportRuntime.unauthorizedMessage ? (
+        <Card className="border-red-200 bg-red-50 p-5">
+          <p className="text-sm font-black text-red-800">{control.visibleSupportExportRuntime.unauthorizedMessage}</p>
+        </Card>
+      ) : null}
+
+      {control.visibleSupportExportRuntime.restrictedMessage ? (
+        <Card className="border-amber-200 bg-amber-50 p-5">
+          <p className="text-sm font-black text-amber-800">{control.visibleSupportExportRuntime.restrictedMessage}</p>
+        </Card>
+      ) : null}
+
+      {control.visibleSupportExportRuntime.loadError ? (
+        <Card className="border-amber-200 bg-amber-50 p-5">
+          <p className="text-sm font-black text-amber-800">{control.visibleSupportExportRuntime.loadError}</p>
+        </Card>
+      ) : null}
+
+      {control.visibleSupportExportRuntime.emptyMessage ? (
+        <Card className="border-slate-200 bg-slate-50 p-5">
+          <p className="text-sm font-semibold text-slate-600">{control.visibleSupportExportRuntime.emptyMessage}</p>
+        </Card>
+      ) : null}
+
+      {exportResult === "success" ? (
+        <Card className="border-emerald-200 bg-emerald-50 p-5">
+          <p className="text-sm font-black text-emerald-800">
+            Support export completed successfully. Export attempts are recorded in the audit foundation.
+          </p>
+        </Card>
+      ) : null}
+
+      {exportResult && exportResult !== "success" ? (
+        <Card className="border-amber-200 bg-amber-50 p-5">
+          <p className="text-sm font-black text-amber-800">Support export result: {exportResult}</p>
+        </Card>
+      ) : null}
+
+      <AdminStatGrid
+        stats={[
+          { label: "Exportable records", value: String(control.visibleSupportExportRuntime.totalExportableRecords) },
+          { label: "Export sections", value: String(control.visibleSupportExportRuntime.exportSectionCount) },
+          { label: "Restricted records", value: String(control.visibleSupportExportRuntime.restrictedRecordCount) },
+          { label: "Loading state", value: control.visibleSupportExportRuntime.loadingState }
+        ]}
+      />
+
+      <p className="px-1 text-sm text-slate-600">{control.visibleSupportExportRuntime.exportHelperText}</p>
+
+      <div className="flex flex-wrap items-center gap-3 px-1">
+        {control.visibleSupportExportRuntime.exportJsonHref ? (
+          <Link
+            className="inline-flex items-center rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-900 hover:bg-slate-50"
+            href={control.visibleSupportExportRuntime.exportJsonHref}
+            title={control.visibleSupportExportRuntime.exportHelperText}
+          >
+            Export all JSON
+          </Link>
+        ) : (
+          <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-400">
+            Export all JSON
+          </span>
+        )}
+        {control.visibleSupportExportRuntime.exportCsvHref ? (
+          <Link
+            className="inline-flex items-center rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-900 hover:bg-slate-50"
+            href={control.visibleSupportExportRuntime.exportCsvHref}
+            title={control.visibleSupportExportRuntime.exportHelperText}
+          >
+            Export all CSV
+          </Link>
+        ) : (
+          <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-400">
+            Export all CSV
+          </span>
+        )}
+      </div>
+
+      <AdminTable
+        empty="No Support export sections registered."
+        headers={["Section", "Records", "Availability", "JSON", "CSV", "Helper"]}
+      >
+        {control.visibleSupportExportRuntime.exportSections.map((section) => (
+          <tr key={section.key}>
+            <td className="px-5 py-4 font-semibold text-slate-950">{section.label}</td>
+            <td className="px-5 py-4 text-slate-600">{section.recordCount}</td>
+            <td className="px-5 py-4">
+              <AdminBadge tone={section.exportAvailable ? "green" : "slate"}>
+                {section.exportAvailable ? "available" : "empty"}
+              </AdminBadge>
+            </td>
+            <td className="px-5 py-4">
+              {section.exportJsonHref ? (
+                <Link className="font-semibold text-slate-900 underline" href={section.exportJsonHref}>
+                  Download
+                </Link>
+              ) : (
+                <span className="text-slate-400">n/a</span>
+              )}
+            </td>
+            <td className="px-5 py-4">
+              {section.exportCsvHref ? (
+                <Link className="font-semibold text-slate-900 underline" href={section.exportCsvHref}>
+                  Download
+                </Link>
+              ) : (
+                <span className="text-slate-400">n/a</span>
+              )}
+            </td>
+            <td className="px-5 py-4 text-slate-600">{section.helperText}</td>
           </tr>
         ))}
       </AdminTable>

@@ -17,6 +17,7 @@ export type SupportAuditRuntimeSource = "support_audit_runtime";
 
 export type SupportAuditActionType =
   | "error_event_link"
+  | "export_attempt"
   | "monitoring_event_link"
   | "safe_action_attempt"
   | "ticket_assignment_change"
@@ -208,6 +209,8 @@ export function supportAuditActionTypeLabel(actionType: SupportAuditActionType):
       return "Conversation message created";
     case "safe_action_attempt":
       return "Safe action attempt";
+    case "export_attempt":
+      return "Support export attempt";
     case "monitoring_event_link":
       return "Monitoring event link";
     case "error_event_link":
@@ -229,6 +232,8 @@ function classifyAuditActionType(eventType: string, metadata: AnyRecord): Suppor
       return "ticket_conversation_message_create";
     case "support_safe_action_attempt":
       return "safe_action_attempt";
+    case "support_export_attempt":
+      return "export_attempt";
     case "support_ticket_created": {
       const action = text(metadata.action, 120);
       const sourceEventId = text(metadata.sourceEventId, 80);
@@ -256,6 +261,7 @@ function classifyAuditActionType(eventType: string, metadata: AnyRecord): Suppor
 function resolveAuditGroupKey(actionType: SupportAuditActionType): SupportAuditGroupKey {
   if (
     actionType === "safe_action_attempt" ||
+    actionType === "export_attempt" ||
     actionType === "ticket_visibility_change" ||
     actionType === "monitoring_event_link" ||
     actionType === "error_event_link"
